@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>三目オセロ ゲーム</title>
+  <style>
+    :root{
+      --bg:#0f172a;        /* slate-900 */
+      --panel:#111827;     /* gray-900 */
+      --ink:#e5e7eb;       /* gray-200 */
+      --muted:#9ca3af;     /* gray-400 */
+      --accent:#22d3ee;    /* cyan-400 */
+      --accent2:#a78bfa;   /* violet-400 */
+      --good:#34d399;      /* emerald-400 */
+      --bad:#f87171;       /* red-400 */
+      --warn:#fbbf24;      /* amber-400 */
+    }
+    html,body{height:100%;}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, #1f2937 0%, var(--bg) 40% 100%);
+      color: var(--ink);
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .wrap{ max-width:980px; width:100%; display:grid; grid-template-columns: 1fr 360px; gap:20px; }
+    @media (max-width: 900px){ .wrap{ grid-template-columns: 1fr; } }
+
+    .board{
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px; padding:16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .grid{ display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; }
+    .cell{
+      aspect-ratio:1 / 1; border-radius:16px; position:relative; overflow:hidden;
+      border:1px solid rgba(255,255,255,.08);
+      background:#111827aa; backdrop-filter: blur(4px);
+      display:flex; align-items:center; justify-content:center; cursor:pointer;
+      font-size: clamp(28px, 6vw, 44px); font-weight: 800; letter-spacing:2px;
+      transition: transform .05s ease, box-shadow .2s ease, background .2s ease;
+      user-select:none;
+    }
+    .cell:hover{ transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0,0,0,.35); }
+    .cell.disabled{ cursor:not-allowed; opacity:.55; }
+    .cell.O{ color: var(--accent); text-shadow: 0 0 18px #22d3ee55; }
+    .cell.X{ color: var(--accent2); text-shadow: 0 0 18px #a78bfa55; }
+    .hint.bad{ outline: 3px dashed var(--bad); outline-offset:-6px; }
+    .hint.ok{ outline: 3px dashed var(--good); outline-offset:-6px; }
+
+    .side{
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px; padding:18px; display:flex; flex-direction:column; gap:14px;
+    }
+    h1{ margin:0 0 4px; font-size: clamp(18px, 3.5vw, 22px); letter-spacing:.3px; }
+    .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .badge{ padding:6px 10px; border-radius:999px; font-weight:700; font-size:13px; border:1px solid rgba(255,255,255,.12); }
+    .O.badge{ color: var(--bg); background: var(--accent); border-color: transparent; }
+    .X.badge{ color: var(--bg); background: var(--accent2); border-color: transparent; }
+    .score{ font-size: 15px; color: var(--muted); }
+
+    .toolbar{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+    button{
+      appearance:none; border:1px solid rgba(255,255,255,.12); background:#0b1220;
+      color:var(--ink); padding:10px 14px; border-radius:12px; cursor:pointer;
+      font-weight:700; letter-spacing:.2px; transition: transform .05s ease, background .2s;
+    }
+    button:hover{ transform: translateY(-1px); background:#0c1528; }
+    .ghost{ background:transparent; }
+    .inputBox{
+      appearance:none; border:1px solid rgba(255,255,255,.12); background:#0b1220;
+      color:var(--ink); padding:6px 8px; border-radius:8px; text-align:center;
+      font-weight:700; letter-spacing:.2px; transition: border-color .2s;
+    }
+
+    .log{ font-size:13px; color:var(--muted); max-height:200px; overflow:auto; border-top:1px dashed rgba(255,255,255,.12); padding-top:8px; }
+    .toast{ position:fixed; left:50%; top:14px; transform:translateX(-50%); background:#0b1220;
+      border:1px solid rgba(255,255,255,.12); padding:8px 14px; border-radius:12px; font-weight:700; display:none; }
+
+    .flash{
+      animation: flash 750ms ease-in-out;
+    }
+    @keyframes flash{
+      0%{ box-shadow: 0 0 0 0 rgba(34,211,238,.0); }
+      40%{ box-shadow: 0 0 0 10px rgba(34,211,238,.2); }
+      100%{ box-shadow: 0 0 0 0 rgba(34,211,238,.0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="board">
+      <div class="row" style="justify-content:space-between; margin-bottom:10px">
+        <h1>三目オセロ <span class="badge" id="turnBadge">先手: <span class="O">O</span></span></h1>
+        <div class="row">
+          <span class="badge O">O: <b id="scoreO">0</b></span>
+          <span class="badge X">X: <b id="scoreX">0</b></span>
+        </div>
+      </div>
+      <div id="grid" class="grid"></div>
+    </section>
+
+    <aside class="side">
+      <div class="row" style="justify-content:space-between">
+        <div class="score">ターン: <b id="turnText">O</b></div>
+        <div class="score">直前の手: <b id="lastMove">—</b></div>
+      </div>
+      <div class="toolbar">
+        <label for="difficulity" style="font-size:13px;">CPUの難易度<br><span style="font-size:12px; color: var(--muted)">高くすると重くなります</span></label>
+        <input id="difficulity" type="number" min="1" max="20" value="5" style="width:48px;" class="inputBox">
+      </div>
+      <div class="toolbar">
+        <button id="undoBtn" title="1手戻す">↶ アンドゥ</button>
+        <button id="resetBtn" class="ghost" title="初期化">リセット</button>
+        <button id="hintsBtn" class="ghost" title="配置可否を表示">配置ヒント</button>
+      </div>
+      <div class="log" id="log"></div>
+      <details>
+        <summary>ルール</summary>
+        <ul>
+          <li>6×6。OとXを交互に置いていく。</li>
+          <li>タテ・ヨコ・ナナメの<strong>3連</strong>ごとに1点（重複OK）。</li>
+          <li><strong>自分の既存マークの周囲1マス</strong>には新しく置けない。</li>
+          <li>ただし、<strong>自分のマークでタテ・ヨコ・ナナメに挟まれたマス</strong>は上の制限を無視して置ける。</li>
+          <li>置けるマスがなければ<strong>自動でパス</strong>。</li>
+          <li>両者が連続でパスすると<strong>ゲーム終了</strong>し、勝敗が表示される。</li>
+        </ul>
+      </details>
+      <div class="toolbar">
+        <button id="mode2p">2人対戦</button>
+        <button id="modeCpu">CPU対戦</button>
+      </div>
+        <div class="toolbar">
+            <label for="firstPlayerSelect" style="font-size:13px;">先手</label>
+            <select id="firstPlayerSelect" class="inputBox" style="width:60px;">
+            <option value="O">O</option>
+            <option value="X">X</option>
+            </select>
+        </div>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const SIZE = 6;
+    const DIRS8 = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+    const AXES = [[1,0],[0,1],[1,1],[1,-1]];
+
+    let board;
+    let turn = 'O';
+    let firstPlayer = 'O'; // 先手（'O'または'X'）
+    let score = { O:0, X:0 };
+    let awarded = { O:new Set(), X:new Set() };
+    let history = [];
+    let segments = [];
+    let showHints = false;
+    let passStreak = 0; // 連続パス回数
+    let difficulity = 250;
+    let logEnabled = true;
+    let cpuDebug = true;
+    let cpuType = 1; // 0:それぞれの手に対して一定回数シミュレーション(序盤強い)  1: すべての手に対して一定回数シミュレーション(終盤強い)
+
+
+
+    const gridEl = document.getElementById('grid');
+    const turnText = document.getElementById('turnText');
+    const turnBadge = document.getElementById('turnBadge');
+    const scoreO = document.getElementById('scoreO');
+    const scoreX = document.getElementById('scoreX');
+    const lastMove = document.getElementById('lastMove');
+    const logEl = document.getElementById('log');
+    const toastEl = document.getElementById('toast');
+
+    function init(){
+      board = Array.from({length:SIZE},()=>Array(SIZE).fill(''));
+      score = { O:0, X:0 };
+      awarded = { O:new Set(), X:new Set() };
+      history = [];
+      turn = firstPlayer; // ← ここを修正
+      passStreak = 0;
+      buildSegments();
+      render();
+      setLog('ゲーム開始。' + firstPlayer + 'の先手！');
+      if(vsCpu && turn==='X') cpuMoveMonteCarlo();
+    }
+
+    function buildSegments(){
+      segments = [];
+      let id = 0;
+      for(let r=0;r<SIZE;r++){
+        for(let c=0;c<=SIZE-3;c++){
+          segments.push({id:id++, cells:[[r,c],[r,c+1],[r,c+2]]});
+        }
+      }
+      for(let c=0;c<SIZE;c++){
+        for(let r=0;r<=SIZE-3;r++){
+          segments.push({id:id++, cells:[[r,c],[r+1,c],[r+2,c]]});
+        }
+      }
+      for(let r=0;r<=SIZE-3;r++){
+        for(let c=0;c<=SIZE-3;c++){
+          segments.push({id:id++, cells:[[r,c],[r+1,c+1],[r+2,c+2]]});
+        }
+      }
+      for(let r=0;r<=SIZE-3;r++){
+        for(let c=2;c<SIZE;c++){
+          segments.push({id:id++, cells:[[r,c],[r+1,c-1],[r+2,c-2]]});
+        }
+      }
+    }
+
+    function render(){
+      gridEl.innerHTML = '';
+      for(let r=0;r<SIZE;r++){
+        for(let c=0;c<SIZE;c++){
+          const v = board[r][c];
+          const btn = document.createElement('button');
+          btn.className = 'cell' + (v? (' ' + v):'');
+          btn.dataset.r = r; btn.dataset.c = c;
+          btn.textContent = v || '';
+          if(v) btn.classList.add('disabled');
+          if(showHints && !v){
+            const ok = canPlace(r,c,turn);
+            btn.classList.add('hint');
+            btn.classList.add(ok?'ok':'bad');
+          }
+          btn.addEventListener('click', onCellClick);
+          gridEl.appendChild(btn);
+        }
+      }
+      turnText.textContent = turn;
+      turnBadge.innerHTML = '先手: <span class="' + firstPlayer + '">' + firstPlayer + '</span>';
+      turnBadge.innerHTML = '手番: <span class="' + turn + '">' + turn + '</span>';
+      scoreO.textContent = score.O;
+      scoreX.textContent = score.X;
+    }
+
+    function inBounds(r,c){ return r>=0 && r<SIZE && c>=0 && c<SIZE; }
+
+    function onCellClick(e){
+      if(vsCpu && turn==='X') return;
+      const r = +e.currentTarget.dataset.r;
+      const c = +e.currentTarget.dataset.c;
+      if(board[r][c]) return;
+      if(!canPlace(r,c,turn)) {
+        toast('そのマスには置けないよ');
+        return;
+      }
+      place(r,c,turn);
+      const gained = awardNewPoints(turn);
+      if(gained>0){ toast(turn + ' +'+gained+'点！'); }
+      lastMove.textContent = `${turn} @ (${r+1},${c+1})`;
+      setLog(`${turn} が (${r+1},${c+1}) に配置。+${gained}点`);
+      passStreak = 0; // リセット
+      turn = (turn==='O')?'X':'O';
+      checkPassOrEnd();
+      render();
+      if(vsCpu && turn==='X') cpuMoveMonteCarlo();
+    }
+
+
+
+    async function cpuMoveMonteCarlo(simulations = difficulity) {
+      const player = 'X';
+      const moves = availableMoves(player);
+      if (moves.length === 0) {
+        setLog(player + ' は置ける場所がないのでパス！');
+        toast(player + ' パス！');
+        passStreak++;
+        if (passStreak >= 2) { endGame(); return; }
+        turn = 'O';
+        return;
+      }
+
+      let bestMove = null;
+      let bestScore = -Infinity;
+
+      if(cpuDebug) { console.log("=== モンテカルロシミュレーション結果 ==="); }
+
+      if(cpuType === 0){
+          for (const move of moves) {
+            let total = 0;
+            for (let i = 0; i < simulations; i++) {
+              total += simulateRandomPlayout(move, player);
+            }
+            const avg = total / simulations;
+
+            // ★ 各マスごとのスコアを出力
+            if(cpuDebug) { console.log(`候補手 (${move[0]+1}, ${move[1]+1}) → 平均スコア: ${avg.toFixed(3)} (試行${simulations}回)`); }
+
+            if (avg > bestScore) {
+              bestScore = avg;
+              bestMove = move;
+            }
+          }
+      } else if (cpuType === 1){
+          let dividedSimulations = Math.ceil(simulations / moves.length);
+          for (const move of moves) {
+            let total = 0;
+            for (let i = 0; i < dividedSimulations; i++) {
+              total += simulateRandomPlayout(move, player);
+            }
+            const avg = total / dividedSimulations;
+
+            // ★ 各マスごとのスコアを出力
+            if(cpuDebug) { console.log(`候補手 (${move[0]+1}, ${move[1]+1}) → 平均スコア: ${avg.toFixed(3)} (試行${dividedSimulations}回)`); }
+
+            if (avg > bestScore) {
+              bestScore = avg;
+              bestMove = move;
+            }
+          }
+      } else {
+          console.error("そんなcpuTypeはありません:", cpuType);
+          return;
+      }
+
+      if(cpuDebug) {
+        console.log(`👉 採用手: (${bestMove[0]+1}, ${bestMove[1]+1}) 平均スコア=${bestScore.toFixed(3)}`);
+        console.log("=====================================");
+      }
+
+      // 実際に置く
+      const [r, c] = bestMove;
+      place(r, c, player);
+      const gained = awardNewPoints(player);
+      if (gained > 0) { toast(player + ' +' + gained + '点！'); }
+      lastMove.textContent = `${player} @ (${r+1},${c+1})`;
+      setLog(`${player} が (${r+1},${c+1}) に配置。+${gained}点`);
+      passStreak = 0;
+      turn = 'O';
+      render();
+      checkPassOrEnd();
+    }
+
+
+    function simulateRandomPlayout(firstMove, player) {
+      // 盤面とスコアをコピー
+      const simBoard = board.map(row => row.slice());
+      const simAwarded = { O: new Set(awarded.O), X: new Set(awarded.X) };
+      const simScore = { O: score.O, X: score.X };
+
+      // 最初の手を置く
+      const [r, c] = firstMove;
+      simBoard[r][c] = player;
+      simScore[player] += simulateScore(simBoard, r, c, player, simAwarded);
+
+      // 残りは終局までランダムプレイ
+      let cur = (player === 'O') ? 'X' : 'O';
+      let passes = 0;
+      while (passes < 2) {
+        // 置ける手を列挙
+        const moves = [];
+        for (let rr = 0; rr < SIZE; rr++) {
+          for (let cc = 0; cc < SIZE; cc++) {
+            if (canPlaceSim(rr, cc, cur, simBoard)) moves.push([rr, cc]);
+          }
+        }
+
+        if (moves.length === 0) {
+          // パス
+          passes++;
+          cur = (cur === 'O') ? 'X' : 'O';
+          continue;
+        }
+
+        passes = 0; // リセット
+        const [rr, cc] = moves[Math.floor(Math.random() * moves.length)];
+        simBoard[rr][cc] = cur;
+        simScore[cur] += simulateScore(simBoard, rr, cc, cur, simAwarded);
+
+        // 手番交代
+        cur = (cur === 'O') ? 'X' : 'O';
+      }
+
+      // 最終的に勝敗でスコアを返す
+      if (simScore.X > simScore.O) return 1;
+      if (simScore.X < simScore.O) return -1;
+      return 0;
+    }
+
+
+
+
+    function canPlaceSim(r, c, p, simBoard) {
+      if (simBoard[r][c]) return false;
+
+      // 挟み込みなら例外的にOK
+      if (isSandwichedSim(r, c, p, simBoard)) return true;
+
+      // 通常の禁止ルール（隣接に自分があると置けない）
+      for (const [dr, dc] of DIRS8) {
+        const nr = r + dr, nc = c + dc;
+        if (inBounds(nr, nc) && simBoard[nr][nc] === p) return false;
+      }
+      return true;
+    }
+
+    function isSandwichedSim(r, c, p, simBoard) {
+      for (const [dr,dc] of AXES){
+        let hasPos=false, hasNeg=false;
+        let rr=r+dr, cc=c+dc;
+        while(inBounds(rr,cc)){
+          if(simBoard[rr][cc]===p){ hasPos=true; break; }
+          rr+=dr; cc+=dc;
+        }
+        rr=r-dr; cc=c-dc;
+        while(inBounds(rr,cc)){
+          if(simBoard[rr][cc]===p){ hasNeg=true; break; }
+          rr-=dr; cc-=dc;
+        }
+        if(hasPos && hasNeg) return true;
+      }
+      return false;
+    }
+
+
+
+      function simulateScore(simBoard,r,c,p,simAwarded){
+        let gained=0;
+        for(const seg of segments){
+          const ok = seg.cells.every(([rr,cc])=>simBoard[rr][cc]===p);
+          if(!ok) continue;
+          if(!simAwarded[p].has(seg.id)){ simAwarded[p].add(seg.id); gained++; }
+        }
+        return gained;
+      }
+
+
+
+
+    function place(r,c,p){
+      board[r][c] = p;
+      history.push({ r,c, player:p, newly:[] });
+    }
+
+    function canPlace(r,c,p){
+      if(board[r][c]) return false;
+      const sandwiched = isSandwiched(r,c,p);
+      if(sandwiched) return true;
+      for(const [dr,dc] of DIRS8){
+        const nr=r+dr, nc=c+dc;
+        if(inBounds(nr,nc) && board[nr][nc]===p) return false;
+      }
+      return true;
+    }
+
+    function isSandwiched(r,c,p){
+      for(const [dr,dc] of AXES){
+        let hasPos=false, hasNeg=false;
+        let rr=r+dr, cc=c+dc;
+        while(inBounds(rr,cc)){
+          if(board[rr][cc]===p){ hasPos=true; break; }
+          rr+=dr; cc+=dc;
+        }
+        rr=r-dr; cc=c-dc;
+        while(inBounds(rr,cc)){
+          if(board[rr][cc]===p){ hasNeg=true; break; }
+          rr-=dr; cc-=dc;
+        }
+        if(hasPos && hasNeg) return true;
+      }
+      return false;
+    }
+
+    function awardNewPoints(p){
+      let gained = 0;
+      for(const seg of segments){
+        const ok = seg.cells.every(([r,c])=>board[r][c]===p);
+        if(!ok) continue;
+        if(!awarded[p].has(seg.id)){
+          awarded[p].add(seg.id);
+          gained++;
+          if(history.length>0){ history[history.length-1].newly.push(seg.id); }
+        }
+      }
+      score[p] += gained;
+      return gained;
+    }
+
+    function undo(){
+      const h = history.pop();
+      if(!h) { toast('戻す手がないよ'); return; }
+      board[h.r][h.c] = '';
+      if(h.newly && h.newly.length){
+        for(const id of h.newly){
+          awarded[h.player].delete(id);
+          score[h.player] -= 1;
+        }
+      }
+      turn = h.player;
+      lastMove.textContent = '—';
+      setLog(`アンドゥ: ${h.player} の手を取り消し`);
+      render();
+    }
+
+    function reset(){ init(); lastMove.textContent='—'; }
+
+    function setLog(msg){
+          if(!logEnabled) return;
+      const time = new Date().toLocaleTimeString();
+      const line = document.createElement('div');
+      line.textContent = `[${time}] ${msg}`;
+      logEl.prepend(line);
+
+      // 最大100行まで
+      while(logEl.childNodes.length > 100){
+        logEl.removeChild(logEl.lastChild);
+      }
+    }
+
+    function toast(msg){
+      toastEl.textContent = msg; toastEl.style.display='block';
+      clearTimeout(toastEl._t);
+      toastEl._t = setTimeout(()=> toastEl.style.display='none', 1300);
+    }
+
+    function checkPassOrEnd(){
+      const moves = availableMoves(turn);
+      if(moves.length===0){
+        setLog(turn+' は置ける場所がないのでパス！');
+        toast(turn+' パス！');
+        passStreak++;
+        if(passStreak>=2){
+          endGame();
+          return;
+        }
+        turn = (turn==='O')?'X':'O';
+        if(vsCpu && turn==='X') cpuMoveMonteCarlo();
+        checkPassOrEnd();
+      }
+    }
+
+    function availableMoves(p){
+      const res=[];
+      for(let r=0;r<SIZE;r++){
+        for(let c=0;c<SIZE;c++){
+          if(canPlace(r,c,p)) res.push([r,c]);
+        }
+      }
+      return res;
+    }
+
+    function endGame(){
+      let msg;
+      if(score.O>score.X){ msg='Oの勝ち！'; }
+      else if(score.X>score.O){ msg='Xの勝ち！'; }
+      else { msg='引き分け！'; }
+      setLog('ゲーム終了: '+msg);
+      toast('ゲーム終了: '+msg);
+    }
+
+    document.getElementById('undoBtn').addEventListener('click', undo);
+    document.getElementById('resetBtn').addEventListener('click', reset);
+    document.getElementById('hintsBtn').addEventListener('click', ()=>{ showHints=!showHints; render(); });
+    document.getElementById('mode2p').addEventListener('click',()=>{ vsCpu=false; init(); });
+    document.getElementById('modeCpu').addEventListener('click',()=>{ vsCpu=true; init(); });
+    
+    document.getElementById('difficulity').addEventListener('change', function(e){
+      let v = parseInt(e.target.value, 10);
+      if(isNaN(v) || v < 1) v = 1;
+      if(v > 20) v = 20;
+      difficulity = v * v * 10 * (1 + cpuType * 9);
+      e.target.value = v; // 範囲外入力時も補正
+      setLog('シミュレート回数を ' + difficulity + '回 に変更しました');
+    });
+
+    document.getElementById('firstPlayerSelect').addEventListener('change', function(e){
+        firstPlayer = e.target.value;
+        setLog('先手を ' + firstPlayer + ' に変更しました');
+        init();
+    });
+
+
+    vsCpu=false
+    init();
+  </script>
+</body>
+</html>
