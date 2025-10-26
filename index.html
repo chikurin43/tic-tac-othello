@@ -16,13 +16,23 @@
       --bad:#f87171;       /* red-400 */
       --warn:#fbbf24;      /* amber-400 */
     }
-    html,body{height:100%;}
-    body{
-      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+    html, body {
+      height: auto;
+      min-height: 100vh;
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
       background: radial-gradient(1200px 800px at 80% -10%, #1f2937 0%, var(--bg) 40% 100%);
       color: var(--ink);
-      display:flex; align-items:center; justify-content:center; padding:24px;
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+      align-items: flex-start; /* ← 中央ではなく上寄せに変更 */
+      overflow-y: auto; /* ← スクロール可能に */
     }
+
     .wrap{ max-width:980px; width:100%; display:grid; grid-template-columns: 1fr 360px; gap:20px; }
     @media (max-width: 900px){ .wrap{ grid-template-columns: 1fr; } }
 
@@ -157,7 +167,7 @@
     let segments = [];
     let showHints = false;
     let passStreak = 0; // 連続パス回数
-    let difficulity = 250;
+    let difficulity = 157;
     let logEnabled = true;
     let cpuDebug = true;
     let cpuType = 1; // 0:それぞれの手に対して一定回数シミュレーション(序盤強い)  1: すべての手に対して一定回数シミュレーション(終盤強い)
@@ -562,7 +572,7 @@
       let v = parseInt(e.target.value, 10);
       if(isNaN(v) || v < 1) v = 1;
       if(v > 20) v = 20;
-      difficulity = v * v * 10 * (1 + cpuType * 9);
+      difficulity = Math.ceil(v * v * v * v / 40 * (1 + cpuType * 9));
       e.target.value = v; // 範囲外入力時も補正
       setLog('シミュレート回数を ' + difficulity + '回 に変更しました');
     });
